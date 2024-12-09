@@ -1,0 +1,134 @@
+- name: create work directory
+  shell: "mkdir -p /opt/kernel_test/kernel"
+
+- name: Git Clone from kernel repo
+  git:
+    repo: https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+    dest:  /opt/kernel_test/kernel
+    version: "{{ item }}"
+    force: yes
+- name: Ger kernel version from tag
+  set_fact:
+    kernel_version: "{{ (item[1:] if item[1:].count('.') == 2 else item[1:] + '.0') | trim }}"
+
+- name: Copy config file from default kernel
+  shell: cp /boot/config-`uname -r` /opt/kernel_test/kernel/.config
+
+- name: Remove previous version file
+  shell: rm -rf /opt/kernel_test/kernel/.version
+
+- name:  make olddefconfig
+  shell: make olddefconfig
+  args:
+    chdir: /opt/kernel_test/kernel/
+
+- name: Build kernel
+  shell: "make -s binrpm-pkg -j $(($(nproc) / 2))"
+  args:
+    chdir: /opt/kernel_test/kernel/
+
+- name: Force install new build kernel RPM
+  ansible.builtin.shell: |
+    yum install -y {{ ansible_env.HOME }}/rpmbuild/RPMS/x86_64/kernel-{{ kernel_version }}-1.x86_64.rpm
+
+- name: Generate kernel configuration for grub
+  shell: grub2-mkconfig  > /boot/grub2/grub.cfg
+
+- name: Extract Title for this kernel version
+  shell: grubby --info=/boot/vmlinuz-{{ kernel_version }} | grep title | sed "s/title=//"
+  register: kernel_title
+
+- name: Set kernel {{ kernel_version }} as a reboot kernel
+  shell: grub2-reboot "{{ kernel_title.stdout }}"
+
+- name: Debug grubenv
+  shell: cat /boot/grub2/grubenv
+
+- name: Rebooting machine to make new kernel running
+  shell: reboot
+  ignore_errors: yes
+
+- name: Wait for SSH to become available
+  shell: |
+    timeout 1200 bash -c '
+      while ! ssh -o ConnectTimeout=5 {{ inventory_hostname }} exit; do
+        echo "Waiting for SSH to become available..."
+        sleep 5
+      done
+    '
+  delegate_to: localhost
+  register: ssh_wait_result
+  failed_when: ssh_wait_result.rc != 0
+
+- name: Ensure new kernel is correct
+  block:
+    - name: Get running kernel
+      shell: uname -r
+      register: new_running
+
+    - name: Test kernel version
+      ansible.builtin.assert:
+        that:
+          - new_running.stdout == kernel_version
+        fail_msg: "Running kernel {{ new_running.stdout }} is not expected"
+
+- name: create /opt/kernel_test/lmbench
+  shell: mkdir -p /opt/kernel_test/lmbench
+
+- name: Download lmbench
+  git:
+    repo: https://github.com/intel/lmbench.git
+    version: master
+    dest:  /opt/kernel_test/lmbench
+    force: yes
+
+- name: Apply patch to lmbench repository
+  block:
+    - name: Create patch file for lmbench
+      copy:
+        dest: "/opt/kernel_test/lmbench/01-lmbench.patch"
+        src: 01-lmbench.patch
+
+    - name: Create patch file for lmbench
+      copy:
+        dest: "/opt/kernel_test/lmbench/02-lmbench.patch"
+        src: 02-lmbench.patch
+
+    - name: Apply the patch
+      command: git am 01-lmbench.patch
+      args:
+        chdir: /opt/kernel_test/lmbench/
+
+    - name: Apply the patch
+      command: git am 02-lmbench.patch
+      args:
+        chdir: /opt/kernel_test/lmbench/
+
+- name: Build lmbench
+  shell: make LDFLAGS=-ltirpc
+  args:
+    chdir: /opt/kernel_test/lmbench/
+
+- name: run lmbench
+  shell: ./results_raw
+  args:
+    chdir: /opt/kernel_test/lmbench/scripts
+
+- name: reboot system after finishing test
+  shell: reboot
+  ignore_errors: yes
+
+- name: Wait for SSH to become available
+  shell: |
+    timeout 1200 bash -c '
+      while ! ssh -o ConnectTimeout=5 {{ inventory_hostname }} exit; do
+        echo "Waiting for SSH to become available..."
+        sleep 5
+      done
+    '
+  delegate_to: localhost
+  register: ssh_wait_result
+  failed_when: ssh_wait_result.rc != 0
+
+- name: Remove kernel rpm
+  shell: yum remove -y kernel-{{ kernel_version }}-1
