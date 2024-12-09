@@ -1,0 +1,5 @@
+[test-hosts]
+10.169.73.79
+
+[all:vars]
+kernel_tags = [ "v5.5", "v5.6", "v5.7" ]
