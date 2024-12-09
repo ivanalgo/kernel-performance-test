@@ -1,0 +1,26 @@
+From de074533897691a42533b84c70a22ef2cafc2fd1 Mon Sep 17 00:00:00 2001
+From: Yongting Lin <linyongting@gmail.com>
+Date: Fri, 6 Dec 2024 11:35:26 +0800
+Subject: [PATCH 1/2] Bugfix: add -I/usr/include/tirpc to compile with tirpc
+
+---
+ src/Makefile | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/Makefile b/src/Makefile
+index 2555014..a3e638d 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -111,8 +111,8 @@ LIBOBJS= $O/lib_tcp.o $O/lib_udp.o $O/lib_unix.o $O/lib_timing.o 	\
+ 	$O/lib_sched.o
+
+ lmbench: $(UTILS)
+-	@env CFLAGS=-O MAKE="$(MAKE)" MAKEFLAGS="$(MAKEFLAGS)" CC="$(CC)" OS="$(OS)" ../scripts/build all
+-	-@env CFLAGS=-O MAKE="$(MAKE)" MAKEFLAGS="-k $(MAKEFLAGS)" CC="$(CC)" OS="$(OS)" ../scripts/build opt
++	@env CFLAGS="-O -I/usr/include/tirpc" MAKE="$(MAKE)" MAKEFLAGS="$(MAKEFLAGS)" CC="$(CC)" OS="$(OS)" ../scripts/build all
++	-@env CFLAGS="-O -I/usr/include/tirpc" MAKE="$(MAKE)" MAKEFLAGS="-k $(MAKEFLAGS)" CC="$(CC)" OS="$(OS)" ../scripts/build opt
+
+ results: lmbench
+ 	@env OS="${OS}" ../scripts/config-run
+--
+2.31.1
