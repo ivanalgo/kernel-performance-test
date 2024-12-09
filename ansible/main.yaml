@@ -1,0 +1,19 @@
+- hosts: test-hosts
+  tasks:
+    - name: "Get running kernel version"
+      shell: uname -r
+      register: run_kernel
+
+    - name: "Get Configure default kernel version"
+      shell: grubby --default-kernel | sed 's,^/boot/vmlinuz-,,'
+      register: default_kernel
+
+    - name: "Check if running kernel matches default kernel"
+      ansible.builtin.debug:
+        msg: >
+          Running kernel ({{ run_kernel.stdout }}) matches default kernel ({{ default_kernel.stdout }})
+      when: run_kernel.stdout == default_kernel.stdout
+
+    - name: "test"
+      include_tasks: kernel_performance_test.yml
+      loop: "{{ kernel_tags }}
